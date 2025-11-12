@@ -1316,26 +1316,47 @@ async function onRoute() {
   if (hash === "/faculty/courses") {
     if (state.user?.role !== "TEACHER")
       return container('<div class="alert error">Forbidden</div>');
+
+    // ✅ Safe unified user display logic
+    const userToShow = savedUser || state.user;
+    const displayName =
+      userToShow?.firstName && userToShow?.lastName
+        ? `${userToShow.firstName} ${userToShow.lastName}`
+        : userToShow?.email || "N/A";
+
     return (
-      container(`<div class="card">
+      container(`
+    <div class="card">
       <h3>Create Courses</h3>
       <input id="code" placeholder="Course Code"/>
       <input id="section" placeholder="Section"/>
       <input id="title" placeholder="Title"/>
       <input id="description" placeholder="Description"/>
       <input id="capacity" placeholder="Capacity" type="number"/>
-      <select id="status"><option value="OPEN">OPEN</option><option value="CLOSED">CLOSED</option></select>
-      <div style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px;">
+
+      <label for="status" style="font-weight: bold; display: block; margin-bottom: 8px;">Course Status</label>
+      <select id="status" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+        <option value="OPEN">Open</option>
+        <option value="CLOSED">Close</option>
+      </select>
+
+      <label style="font-weight: bold; display: block; margin-bottom: 8px;">Dropping Policy</label>
+      <select id="droppingPolicy" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+        <option value="allow">Allow Dropping</option>
+        <option value="notallow">Do Not Allow Dropping</option>
+      </select>
+
+      <div style="margin-top: 10px; margin-bottom: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px;">
         <div><strong>Professor Email:</strong> ${
-          state.user?.email || "N/A"
+          userToShow?.email || "N/A"
         }</div>
-        <div><strong>Professor Name:</strong> ${
-          state.user ? `${state.user.firstName} ${state.user.lastName}` : "N/A"
-        }</div>
+        <div><strong>Professor Name:</strong> ${displayName}</div>
       </div>
+
       <button id="createCourse">Create</button>
       <div id="msg"></div>
-    </div>`),
+    </div>
+  `),
       setTimeout(() => {
         document.getElementById("createCourse").onclick = async () => {
           const code = document.getElementById("code").value.trim();
@@ -1349,62 +1370,35 @@ async function onRoute() {
             .value.trim();
           const capacityNum = Number(capacityInput);
 
-          // Validate all fields are filled
-          if (code === "") {
+          if (!code || !section || !title || !description) {
             document.getElementById("msg").innerHTML =
-              '<div class="alert error">Course code is required</div>';
-            return;
-          }
-          if (section === "") {
-            document.getElementById("msg").innerHTML =
-              '<div class="alert error">Section is required</div>';
-            return;
-          }
-          if (title === "") {
-            document.getElementById("msg").innerHTML =
-              '<div class="alert error">Title is required</div>';
-            return;
-          }
-          if (description === "") {
-            document.getElementById("msg").innerHTML =
-              '<div class="alert error">Description is required</div>';
+              '<div class="alert error">All fields are required</div>';
             return;
           }
 
-          // Validate capacity
-          if (capacityInput === "") {
+          if (!capacityInput || isNaN(capacityNum) || capacityNum <= 0) {
             document.getElementById("msg").innerHTML =
-              '<div class="alert error">Capacity is required</div>';
-            return;
-          }
-          if (isNaN(capacityNum)) {
-            document.getElementById("msg").innerHTML =
-              '<div class="alert error">Capacity must be a number</div>';
-            return;
-          }
-          if (capacityNum <= 0) {
-            document.getElementById("msg").innerHTML =
-              '<div class="alert error">Capacity must be positive</div>';
+              '<div class="alert error">Capacity must be a positive number</div>';
             return;
           }
 
           const payload = {
-            code: code,
-            section: section,
-            title: title,
-            description: description,
+            code,
+            section,
+            title,
+            description,
             capacity: capacityNum,
             status: document.getElementById("status").value,
-            professorEmail: state.user?.email,
-            professorName: state.user
-              ? `${state.user.firstName} ${state.user.lastName}`
-              : undefined,
+            professorEmail: userToShow?.email,
+            professorName: displayName,
           };
+
           const res = await api(services.courses, "/courses", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
+
           document.getElementById("msg").innerHTML = res.ok
             ? '<div class="alert success">Course Successfully Created</div>'
             : '<div class="alert error">Failed</div>';
@@ -1815,13 +1809,16 @@ async function onRoute() {
       return container(
         '<div class="alert error">Feature unavailable, please try again later.</div>'
       );
+
     const allCourses = await courseRes.json();
     const course = allCourses.find((c) => c._id === courseId);
+
     if (!course)
       return container(
         '<div class="alert error">Course not found or not visible</div>'
       );
 
+    // Fetch roster
     const rosterRes = await api(
       services.courses,
       `/courses/${courseId}/enrollments`
@@ -1844,31 +1841,38 @@ async function onRoute() {
 
     return (
       container(`<div class="card">
-        <h3>${course.code} - ${course.title}</h3>
-        <div>${course.section ? `Section: ${course.section}` : ""}</div>
-        <div>${
-          course.description ? `Description: ${course.description}` : ""
-        }</div>
-        <div>Enrolled: <span id="enrolledCount">${
-          rosterOk ? roster.length : course.enrolledCount ?? 0
-        }</span> / <span id="capVal">${course.capacity ?? "N/A"}</span></div>
-        <div>Status: ${course.status}</div>
-        <div>${
-          course.professorName && course.professorEmail
-            ? `Professor: ${course.professorName} (${course.professorEmail})`
-            : course.professorName
-            ? `Professor: ${course.professorName}`
-            : course.professorEmail
-            ? `Professor: ${course.professorEmail}`
-            : ""
-        }</div>
+      <h3>${course.code} - ${course.title}</h3>
+      <div>${course.section ? `Section: ${course.section}` : ""}</div>
+      <div>${
+        course.description ? `Description: ${course.description}` : ""
+      }</div>
+      <div>Enrolled: <span id="enrolledCount">${
+        rosterOk ? roster.length : course.enrolledCount ?? 0
+      }</span> / <span id="capVal">${course.capacity ?? "N/A"}</span></div>
+      <div>Status: ${course.status}</div>
+      <div>${
+        course.professorName && course.professorEmail
+          ? `Professor: ${course.professorName} (${course.professorEmail})`
+          : course.professorName
+          ? `Professor: ${course.professorName}`
+          : course.professorEmail
+          ? `Professor: ${course.professorEmail}`
+          : ""
+      }</div>
 
-        ${
-          state.user?.role === "TEACHER" && rosterOk
-            ? `
-        <div class="card">
-          <h4>Manage Status</h4>
-          <select id="statusSelect">
+      ${
+        state.user?.role === "TEACHER" && rosterOk
+          ? `
+        <h4>Manage Course</h4>
+
+        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 4px;">
+          <h5 style="margin-top: 0; margin-bottom: 12px;">Manage Status</h5>
+          <div style="margin-bottom: 10px; padding: 8px; background: #fff; border-left: 3px solid #0066cc;">
+            <strong>Current Status:</strong> <span id="statusDisplay">${
+              course.status
+            }</span>
+          </div>
+          <select id="statusSelect" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
             <option value="OPEN" ${
               course.status === "OPEN" ? "selected" : ""
             }>OPEN</option>
@@ -1876,124 +1880,170 @@ async function onRoute() {
               course.status === "CLOSED" ? "selected" : ""
             }>CLOSED</option>
           </select>
-          <button id="applyStatus">Apply</button>
-          <div id="statusMsg"></div>
         </div>
-        <div class="card">
-          <h4>Dropping Policy</h4>
-          <label>
-            <input type="checkbox" id="droppingAllowed" ${
-              course.droppingAllowed ? "checked" : ""
-            } />
-            Allow students to drop this course
-          </label>
-          <button id="applyDropping">Apply</button>
-          <div id="droppingMsg"></div>
+
+        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 4px;">
+          <h5 style="margin-top: 0; margin-bottom: 12px;">Change Capacity</h5>
+          <div style="margin-bottom: 10px; padding: 8px; background: #fff; border-left: 3px solid #0066cc;">
+            <strong>Current Capacity:</strong> <span id="capDisplay">${
+              course.capacity ?? "N/A"
+            }</span><br/>
+            <strong>Currently Enrolled:</strong> ${
+              rosterOk ? roster.length : course.enrolledCount ?? 0
+            }
+          </div>
+          <input id="newCapacity" type="number" placeholder="Enter new capacity" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;"/>
         </div>
-        <div class="card">
-          <h4>Manage Capacity</h4>
-          <input id="newCapacity" type="number" placeholder="New capacity"/>
-          <button id="applyCapacity">Apply</button>
-          <div id="capMsg"></div>
+
+        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 4px;">
+          <h5 style="margin-top: 0; margin-bottom: 12px;">Dropping Policy</h5>
+          <div style="margin-bottom: 10px; padding: 8px; background: #fff; border-left: 3px solid #0066cc;">
+            <strong>Current Policy:</strong> <span id="droppingDisplay">${
+              course.droppingAllowed ? "Allow" : "Do Not Allow"
+            }</span>
+          </div>
+          <select id="droppingSelect" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <option value="allow" ${
+              course.droppingAllowed ? "selected" : ""
+            }>Allow</option>
+            <option value="notallow" ${
+              !course.droppingAllowed ? "selected" : ""
+            }>Not Allow</option>
+          </select>
         </div>
-        <div class="card">
-          <h4>Enrolled Students</h4>
-          ${
-            roster.length
-              ? roster
-                  .map(
-                    (r) => `
-            <div class="card">
-              <div>Student: <code>${r.studentId}</code></div>
-              <div>Grade: <b id="grade_display_${r.studentId}">--</b></div>
-              <div>
-                <select id="grade_${r.studentId}">
-                  ${gradesOptions
-                    .map((g) => `<option value="${g}">${g || "--"}</option>`)
-                    .join("")}
-                </select>
-                <button class="applyGrade" data-student="${
-                  r.studentId
-                }">Set Grade</button>
-                <button class="removeStudent" data-student="${
-                  r.studentId
-                }">Remove</button>
-              </div>
+
+        <button id="applyAllChanges" style="width: 100%; padding: 10px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Apply Changes</button>
+        <div id="manageCourseMsg" style="margin-top: 12px;"></div>
+
+      <div class="card">
+        <h4>Enrolled Students</h4>
+        ${
+          roster.length
+            ? roster
+                .map((r) => {
+                  const studentName =
+                    r.student?.firstName && r.student?.lastName
+                      ? `${r.student.firstName} ${r.student.lastName}`
+                      : r.student?.email || "Unknown";
+
+                  const studentEmail = r.student?.email || "N/A";
+                  const studentId = r.student?._id || r.studentId || "N/A";
+
+                  // 🧩 Log what’s being rendered for debugging
+                  console.log("=== Enrollment record ===");
+                  console.log("Raw enrollment:", r);
+                  console.log("studentName:", studentName);
+                  console.log("studentEmail:", studentEmail);
+                  console.log("studentId:", studentId);
+                  return `
+          <div class="card">
+            <div><strong>Student:</strong> ${studentName}</div>
+            <div><strong>Email:</strong> ${studentEmail}</div>
+            <div><strong>ID:</strong> <code>${studentId}</code></div>
+            <div>Grade: <b id="grade_display_${studentId}">--</b></div>
+            <div>
+              <select id="grade_${studentId}">
+                ${gradesOptions
+                  .map((g) => `<option value="${g}">${g || "--"}</option>`)
+                  .join("")}
+              </select>
+              <button class="applyGrade" data-student="${studentId}">Set Grade</button>
+              <button class="removeStudent" data-student="${studentId}">Remove</button>
             </div>
-          `
-                  )
-                  .join("")
-              : '<div class="alert">No enrolled students</div>'
-          }
-          <div id="rosterMsg"></div>
-        </div>`
-            : ""
+          </div>
+        `;
+                })
+                .join("")
+            : '<div class="alert">No enrolled students</div>'
         }
-      </div>`),
+        <div id="rosterMsg"></div>
+      </div>`
+          : ""
+      }
+    </div>`),
       setTimeout(() => {
-        const statusBtn = document.getElementById("applyStatus");
-        if (statusBtn)
-          statusBtn.onclick = async () => {
+        const applyBtn = document.getElementById("applyAllChanges");
+        if (applyBtn) {
+          applyBtn.onclick = async () => {
+            const msgDiv = document.getElementById("manageCourseMsg");
+            msgDiv.innerHTML = "";
+
             const newStatus = document.getElementById("statusSelect").value;
-            const r = await api(services.courses, `/courses/${courseId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: newStatus }),
-            });
-            document.getElementById("statusMsg").innerHTML = r.ok
-              ? '<div class="alert success">Status Updated</div>'
-              : '<div class="alert error">Failed</div>';
-            if (r.ok) {
-              try {
-                const updated = await r.json();
-                // Update the displayed status
-                document.querySelector(
-                  "div:nth-child(4)"
-                ).innerText = `Status: ${updated.status}`;
-              } catch {}
+            const newCapacity = document.getElementById("newCapacity").value;
+            const droppingValue =
+              document.getElementById("droppingSelect").value;
+            const newDroppingAllowed = droppingValue === "allow";
+
+            const statusChanged = newStatus !== course.status;
+            const capacityChanged =
+              newCapacity && Number(newCapacity) !== course.capacity;
+            const droppingChanged =
+              newDroppingAllowed !== course.droppingAllowed;
+
+            if (!statusChanged && !capacityChanged && !droppingChanged) {
+              msgDiv.innerHTML = '<div class="alert">No changes to apply</div>';
+              setTimeout(() => (msgDiv.innerHTML = ""), 3000);
+              return;
             }
-          };
-        const droppingBtn = document.getElementById("applyDropping");
-        if (droppingBtn)
-          droppingBtn.onclick = async () => {
-            const droppingAllowed =
-              document.getElementById("droppingAllowed").checked;
-            const r = await api(
-              services.courses,
-              `/courses/${courseId}/dropping`,
-              {
+
+            let hasError = false;
+
+            // Apply status change
+            if (statusChanged) {
+              const r = await api(services.courses, `/courses/${courseId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ droppingAllowed }),
-              }
-            );
-            document.getElementById("droppingMsg").innerHTML = r.ok
-              ? '<div class="alert success">Dropping policy updated</div>'
-              : '<div class="alert error">Failed</div>';
-          };
-        const capBtn = document.getElementById("applyCapacity");
-        if (capBtn)
-          capBtn.onclick = async () => {
-            const cap = Number(document.getElementById("newCapacity").value);
-            const r = await api(
-              services.courses,
-              `/courses/${courseId}/capacity`,
-              {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ capacity: cap }),
-              }
-            );
-            document.getElementById("capMsg").innerHTML = r.ok
-              ? '<div class="alert success">Updated</div>'
-              : '<div class="alert error">Failed</div>';
-            if (r.ok) {
-              try {
-                const updated = await r.json();
-                document.getElementById("capVal").innerText = updated.capacity;
-              } catch {}
+                body: JSON.stringify({ status: newStatus }),
+              });
+              if (r.ok)
+                document.getElementById("statusDisplay").textContent =
+                  newStatus;
+              else hasError = true;
             }
+
+            // Apply capacity change
+            if (capacityChanged) {
+              const cap = Number(newCapacity);
+              const r = await api(
+                services.courses,
+                `/courses/${courseId}/capacity`,
+                {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ capacity: cap }),
+                }
+              );
+              if (r.ok) {
+                document.getElementById("capDisplay").textContent = cap;
+                document.getElementById("capVal").textContent = cap;
+              } else hasError = true;
+            }
+
+            // Apply dropping policy
+            if (droppingChanged) {
+              const r = await api(
+                services.courses,
+                `/courses/${courseId}/dropping`,
+                {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ droppingAllowed: newDroppingAllowed }),
+                }
+              );
+              if (r.ok)
+                document.getElementById("droppingDisplay").textContent =
+                  newDroppingAllowed ? "Allow" : "Not Allow";
+              else hasError = true;
+            }
+
+            msgDiv.innerHTML = hasError
+              ? '<div class="alert error">Some changes failed</div>'
+              : '<div class="alert success">Changes applied successfully</div>';
+            setTimeout(() => (msgDiv.innerHTML = ""), 3000);
           };
+        }
+
+        // Remove student handler
         document.querySelectorAll(".removeStudent").forEach(
           (btn) =>
             (btn.onclick = async (e) => {
@@ -2009,6 +2059,8 @@ async function onRoute() {
               if (r.ok) location.reload();
             })
         );
+
+        // Apply grade handler
         document.querySelectorAll(".applyGrade").forEach(
           (btn) =>
             (btn.onclick = async (e) => {
@@ -2032,10 +2084,9 @@ async function onRoute() {
               document.getElementById("rosterMsg").innerHTML = r.ok
                 ? '<div class="alert success">Grade Updated</div>'
                 : '<div class="alert error">Failed</div>';
-              if (r.ok) {
+              if (r.ok)
                 document.getElementById(`grade_display_${sid}`).innerText =
                   gradeValue;
-              }
             })
         );
       })

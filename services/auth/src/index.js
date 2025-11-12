@@ -674,6 +674,30 @@ app.post("/auth/users", requireAuth, requireRole("ADMIN"), async (req, res) => {
       role,
     });
     console.log("[AUTH] Admin created user:", email, "with role:", role);
+
+    // Sync new user to Users service
+    try {
+      const usersServiceUrl = process.env.USERS_URL || "http://localhost:8002";
+      console.log("[AUTH] Attempting to sync to:", usersServiceUrl);
+      const syncRes = await axios.post(
+        `${usersServiceUrl}/users/sync`,
+        {},
+        {
+          headers: { Authorization: req.headers["authorization"] },
+          timeout: 5000,
+        }
+      );
+      console.log("[AUTH] Sync response:", syncRes.status, syncRes.data);
+    } catch (syncErr) {
+      console.error("[AUTH] Failed to sync user to Users service:");
+      console.error("  Error:", syncErr.message);
+      if (syncErr.response) {
+        console.error("  Status:", syncErr.response.status);
+        console.error("  Data:", syncErr.response.data);
+      }
+      // Don't fail the request, just log the error
+    }
+
     res.status(201).json({
       id: user._id,
       email: user.email,

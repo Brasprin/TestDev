@@ -30,6 +30,8 @@ const JWT_PUBLIC_KEY = process.env.JWT_PUBLIC_KEY_PATH
 
 const userSchema = new mongoose.Schema({
   email: { type: String, unique: true },
+  firstName: String,
+  lastName: String,
   role: {
     type: String,
     enum: ["ADMIN", "TEACHER", "STUDENT"],
@@ -206,6 +208,8 @@ app.post("/users/sync", requireAuth, requireRole("ADMIN"), async (req, res) => {
           {
             $set: {
               email: authUser.email,
+              firstName: authUser.firstName,
+              lastName: authUser.lastName,
               role: authUser.role,
               createdAt: authUser.createdAt,
             },

@@ -21,7 +21,6 @@ app.use(
 );
 app.use(morgan("dev"));
 
-
 const PORT = process.env.PORT || 8003;
 const NAME = process.env.SERVICE_NAME || "courses-service";
 const MONGO_URI =
@@ -46,9 +45,26 @@ const courseSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
+const userSchema = new mongoose.Schema({
+  firstName: String,
+  lastName: String,
+  email: { type: String, unique: true },
+  role: { type: String, enum: ["STUDENT", "TEACHER", "ADMIN"] },
+});
+
+const User = mongoose.model("User", userSchema);
+
 const enrollmentSchema = new mongoose.Schema({
-  studentId: mongoose.Schema.Types.ObjectId,
-  courseId: mongoose.Schema.Types.ObjectId,
+  student: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+  courseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Course",
+    required: true,
+  },
   status: {
     type: String,
     enum: ["ENROLLED", "DROPPED", "WAITLISTED"],
@@ -60,7 +76,7 @@ const enrollmentSchema = new mongoose.Schema({
 
 // Prevent duplicate active enrollments (only for ENROLLED status)
 enrollmentSchema.index(
-  { studentId: 1, courseId: 1 },
+  { student: 1, courseId: 1 },
   { unique: true, partialFilterExpression: { status: "ENROLLED" } }
 );
 
@@ -235,7 +251,7 @@ app.post(
 
     const exists = await Enrollment.findOne({
       courseId,
-      studentId: req.user.sub,
+      student: req.user.sub,
       status: "ENROLLED",
     });
     if (exists) return res.status(409).json({ error: "already enrolled" });
@@ -254,9 +270,10 @@ app.post(
     try {
       const enrollment = await Enrollment.create({
         courseId,
-        studentId: req.user.sub,
+        student: req.user.sub,
         status: "ENROLLED",
       });
+
       // After enrolling, auto-close if full
       const newCount = await Enrollment.countDocuments({
         courseId,
@@ -276,7 +293,10 @@ app.post(
         courseId,
       });
       // Return fresh enrollment with all fields
-      const fresh = await Enrollment.findById(enrollment._id);
+      const fresh = await Enrollment.findById(enrollment._id).populate(
+        "student",
+        "firstName lastName email"
+      );
       res.status(201).json(fresh);
     } catch (e) {
       if (e.code === 11000)
@@ -294,7 +314,7 @@ app.delete(
   async (req, res) => {
     const courseId = req.params.id;
     const enrollment = await Enrollment.findOneAndUpdate(
-      { courseId, studentId: req.user.sub, status: "ENROLLED" },
+      { courseId, student: req.user.sub, status: "ENROLLED" },
       { status: "DROPPED", updatedAt: new Date() },
       { new: true }
     );
@@ -327,7 +347,7 @@ app.get(
   requireAuth,
   requireRole("STUDENT"),
   async (req, res) => {
-    const enrollments = await Enrollment.find({ studentId: req.user.sub });
+    const enrollments = await Enrollment.find({ student: req.user.sub });
     res.json(enrollments);
   }
 );
@@ -345,7 +365,9 @@ app.get(
     const enrollments = await Enrollment.find({
       courseId: req.params.id,
       status: "ENROLLED",
-    }).lean();
+    })
+      .populate("student", "firstName lastName email")
+      .lean();
     // Note: grades are now managed by the grades service
     res.json(enrollments);
   }
@@ -365,7 +387,7 @@ app.delete(
     const enrollment = await Enrollment.findOneAndUpdate(
       {
         courseId: req.params.id,
-        studentId: req.params.studentId,
+        student: req.params.studentId,
         status: "ENROLLED",
       },
       { status: "DROPPED", updatedAt: new Date() },
