@@ -1,0 +1,19 @@
+{
+  "name": "distributed-enrollment-system",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspaces",
+    "start:frontend": "npm --workspace frontend start",
+    "dev:auth": "npm --workspace services/auth run dev",
+    "dev:users": "npm --workspace services/users run dev",
+    "dev:courses": "npm --workspace services/courses run dev",
+    "dev:grades": "npm --workspace services/grades run dev",
+    "dev:audit": "npm --workspace services/audit run dev"
+  }
+}
