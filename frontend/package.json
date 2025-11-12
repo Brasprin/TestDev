@@ -1,0 +1,11 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "npx serve -l 3000 -s public"
+  },
+  "dependencies": {
+    "serve": "^14.2.3"
+  }
+}
